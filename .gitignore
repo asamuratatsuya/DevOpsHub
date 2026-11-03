@@ -20,3 +20,18 @@ tests/**/coverage/
 *.njsproj
 *.sln
 tsconfig.tsbuildinfo
+
+# Python
+backend/.venv/
+backend/**/__pycache__/
+backend/.env
+backend/**/*.pyc
+
+# Vite cache
+.vite/
+frontend/.vite/
+
+# Local environment overrides
+/.env
+frontend/.env.local
+frontend/.env.*.local

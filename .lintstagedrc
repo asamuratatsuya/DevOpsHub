@@ -1,20 +1,26 @@
 {
-  "*.{js,jsx,ts,tsx}": [
-    "prettier --cache --ignore-unknown  --write",
+  "src/api/project.ts": [
+    "prettier --write",
     "eslint --cache --fix"
   ],
-  "{!(package)*.json,*.code-snippets,.!({browserslist,npm,nvm})*rc}": [
-    "prettier --cache --write--parser json"
-  ],
-  "package.json": ["prettier --cache --write"],
-  "*.vue": [
+  "src/views/project/index.vue": [
     "prettier --write",
     "eslint --cache --fix",
     "stylelint --fix --allow-empty-input"
   ],
-  "*.{css,scss,html}": [
-    "prettier --cache --ignore-unknown --write",
-    "stylelint --fix --allow-empty-input"
+  "src/views/welcome/index.vue": [
+    "prettier --write",
+    "eslint --cache --fix"
   ],
-  "*.md": ["prettier --cache --ignore-unknown --write"]
+  "src/router/modules/project.ts": [
+    "prettier --write",
+    "eslint --cache --fix"
+  ],
+  "vite.config.ts": [
+    "prettier --write",
+    "eslint --cache --fix"
+  ],
+  "package.json": [
+    "prettier --write"
+  ]
 }

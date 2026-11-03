@@ -2,10 +2,20 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
+import {
+  createProject,
+  deleteProject,
+  getProjectList,
+  updateProject
+} from "@/api/project";
+
+import type { ProjectApi, ProjectPayload } from "@/api/project";
+
 defineOptions({
   name: "ProjectIndex"
 });
 
+// 前端页面使用的数据结构
 interface Project {
   id: string;
   name: string;
@@ -13,14 +23,30 @@ interface Project {
   branch: string;
   description: string;
   createdAt: string;
+  status: string;
 }
 
-const STORAGE_KEY = "devopshub-projects-v1";
+// 将后端数据转换为前端数据格式
+function mapApiProject(item: ProjectApi): Project {
+  return {
+    id: String(item.id),
+    name: item.name,
+    repoUrl: item.repository_url ?? "",
+    branch: item.branch,
+    description: item.description ?? "",
+    status: item.status,
+    createdAt: item.created_at
+  };
+}
 
 // 项目列表
 const projects = ref<Project[]>([]);
 
-// 搜索关键字
+// 加载状态
+const loading = ref(false);
+const saving = ref(false);
+
+// 搜索关键词
 const searchKeyword = ref("");
 
 // 弹窗状态
@@ -54,36 +80,25 @@ const filteredProjects = computed(() => {
   );
 });
 
-// 从浏览器读取项目
-function loadProjects() {
+// 从后端获取项目列表
+async function loadProjects() {
+  loading.value = true;
+
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const data = await getProjectList();
 
-    if (saved) {
-      const data: unknown = JSON.parse(saved);
-
-      if (Array.isArray(data)) {
-        projects.value = data as Project[];
-      }
-    }
-  } catch {
-    ElMessage.error("读取项目数据失败");
-    projects.value = [];
+    projects.value = data.map(mapApiProject);
+  } catch (error) {
+    console.error("获取项目列表失败：", error);
+    ElMessage.error("获取项目列表失败，请检查后端服务");
+  } finally {
+    loading.value = false;
   }
 }
 
-// 保存项目到浏览器
-function saveToLocalStorage() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects.value));
-  } catch {
-    ElMessage.error("保存失败，请检查浏览器存储空间");
-  }
-}
-
-// 初始化
+// 页面初始化时加载项目
 onMounted(() => {
-  loadProjects();
+  void loadProjects();
 });
 
 // 打开添加窗口
@@ -138,8 +153,10 @@ function normalizeRepoUrl(raw: string): string | null {
   }
 }
 
-// 保存项目
-function handleSave() {
+// 保存项目：根据是否存在 editingId 决定创建或更新
+async function handleSave() {
+  if (saving.value) return;
+
   const name = form.name.trim();
   const branch = form.branch.trim();
   const repoUrl = normalizeRepoUrl(form.repoUrl);
@@ -171,54 +188,75 @@ function handleSave() {
     return;
   }
 
-  if (editingId.value) {
-    const index = projects.value.findIndex(item => item.id === editingId.value);
+  const payload: ProjectPayload = {
+    name,
+    description: form.description.trim() || null,
+    repository_url: repoUrl,
+    branch
+  };
 
-    if (index !== -1) {
-      projects.value[index] = {
-        ...projects.value[index],
-        name,
-        repoUrl,
-        branch,
-        description: form.description.trim()
-      };
+  saving.value = true;
+
+  try {
+    if (editingId.value !== null) {
+      // 调用后端更新接口
+      const updated = await updateProject(Number(editingId.value), payload);
+
+      const index = projects.value.findIndex(
+        item => item.id === editingId.value
+      );
+
+      if (index !== -1) {
+        projects.value[index] = mapApiProject(updated);
+      }
+
+      ElMessage.success("项目修改成功");
+    } else {
+      // 调用后端创建接口
+      const created = await createProject(payload);
+
+      projects.value.unshift(mapApiProject(created));
+
+      ElMessage.success("项目添加成功");
     }
 
-    ElMessage.success("项目修改成功");
-  } else {
-    const newProject: Project = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      repoUrl,
-      branch,
-      description: form.description.trim(),
-      createdAt: new Date().toISOString()
-    };
-
-    projects.value.unshift(newProject);
-    ElMessage.success("项目添加成功");
+    dialogVisible.value = false;
+  } catch (error) {
+    console.error("保存项目失败：", error);
+    ElMessage.error("保存项目失败，请检查后端服务或请求参数");
+  } finally {
+    saving.value = false;
   }
-
-  saveToLocalStorage();
-  dialogVisible.value = false;
 }
 
 // 删除项目
-function handleDelete(item: Project) {
-  ElMessageBox.confirm(`确定要删除项目「${item.name}」吗？`, "删除确认", {
-    confirmButtonText: "确定删除",
-    cancelButtonText: "取消",
-    type: "warning"
-  })
-    .then(() => {
-      projects.value = projects.value.filter(project => project.id !== item.id);
+async function handleDelete(item: Project) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除项目「${item.name}」吗？`,
+      "删除确认",
+      {
+        confirmButtonText: "确定删除",
+        cancelButtonText: "取消",
+        type: "warning"
+      }
+    );
+  } catch {
+    // 用户取消删除
+    return;
+  }
 
-      saveToLocalStorage();
-      ElMessage.success("项目删除成功");
-    })
-    .catch(() => {
-      // 用户取消删除
-    });
+  try {
+    // 调用后端删除接口
+    await deleteProject(Number(item.id));
+
+    projects.value = projects.value.filter(project => project.id !== item.id);
+
+    ElMessage.success("项目删除成功");
+  } catch (error) {
+    console.error("删除项目失败：", error);
+    ElMessage.error("删除项目失败，请检查后端服务");
+  }
 }
 
 // 格式化时间
@@ -273,6 +311,7 @@ function closeDialog() {
 
       <el-table
         v-if="filteredProjects.length > 0"
+        v-loading="loading"
         :data="filteredProjects"
         style="width: 100%"
       >
@@ -301,9 +340,14 @@ function closeDialog() {
 
         <el-table-column prop="branch" label="默认分支" width="120" />
 
-        <el-table-column label="接入状态" width="120">
-          <template #default>
-            <el-tag type="warning" effect="light"> 待接入后端 </el-tag>
+        <el-table-column label="项目状态" width="120">
+          <template #default="{ row }">
+            <el-tag
+              :type="row.status === 'active' ? 'success' : 'info'"
+              effect="light"
+            >
+              {{ row.status === "active" ? "正常" : row.status }}
+            </el-tag>
           </template>
         </el-table-column>
 
@@ -375,8 +419,7 @@ function closeDialog() {
         </el-form-item>
 
         <div class="form-tip">
-          当前版本仅在浏览器本地保存项目资料，尚未验证 GitHub
-          仓库权限或连接状态。
+          项目资料将保存至服务端数据库，目前尚未验证 GitHub 仓库权限或连接状态。
         </div>
       </el-form>
 
