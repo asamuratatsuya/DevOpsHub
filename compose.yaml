@@ -1,3 +1,5 @@
+name: devopshub
+
 services:
   postgres:
     image: postgres:16
@@ -17,5 +19,27 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build:
+      context: ./backend
+    container_name: devopshub-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+psycopg://devopshub:${POSTGRES_PASSWORD}@postgres:5432/devopshub"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: devopshub-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
 volumes:
   postgres_data:
