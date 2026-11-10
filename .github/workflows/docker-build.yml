@@ -1,22 +1,35 @@
-
-name: Build and Push DevOpsHub Images
+name: Build and Deploy DevOpsHub
 
 on:
   push:
     branches:
       - main
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/docker-build.yml'
+
   pull_request:
     branches:
       - main
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/docker-build.yml'
+
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
+
+concurrency:
+  group: devopshub-ci-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-and-push:
-    name: Build and Push Images
+    name: Build, Push and Update Manifests
     runs-on: ubuntu-latest
 
     steps:
@@ -28,10 +41,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # 3. 登录 GitHub Container Registry
-      # Pull Request 不执行登录和镜像推送
+      # 3. 登录 GHCR
       - name: Login to GHCR
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -54,7 +66,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: ./backend
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
           cache-from: type=gha,scope=backend
@@ -76,8 +88,43 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: ./frontend
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
+
+      # 8. 更新 Kubernetes Deployment 镜像版本
+      - name: Update Kubernetes Image Tags
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          IMAGE_TAG="sha-${GITHUB_SHA::7}"
+
+          sed -i -E \
+            "s|(image: ghcr.io/asamuratatsuya/devopshub-backend:).*|\1${IMAGE_TAG}|" \
+            k8s/backend-deployment.yaml
+
+          sed -i -E \
+            "s|(image: ghcr.io/asamuratatsuya/devopshub-frontend:).*|\1${IMAGE_TAG}|" \
+            k8s/frontend-deployment.yaml
+
+          echo "Updated image tag: ${IMAGE_TAG}"
+
+          grep 'image:' k8s/backend-deployment.yaml
+          grep 'image:' k8s/frontend-deployment.yaml
+
+      # 9. 将更新后的配置提交到 GitHub
+      - name: Commit and Push Kubernetes Manifests
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add k8s/backend-deployment.yaml k8s/frontend-deployment.yaml
+
+          if git diff --cached --quiet; then
+            echo "No manifest changes."
+          else
+            git commit -m "ci: update Kubernetes images to sha-${GITHUB_SHA::7}"
+            git push
+          fi
