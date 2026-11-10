@@ -10,6 +10,7 @@ from app.db.database import get_db
 from app.db.session import engine
 from app.models import Project
 from app.routers.project import router as project_router
+from app.routers.cluster import router as cluster_router
 
 
 @asynccontextmanager
@@ -28,7 +29,7 @@ app = FastAPI(
 
 
 app.include_router(project_router)
-
+app.include_router(cluster_router)
 
 @app.get("/")
 async def root():
