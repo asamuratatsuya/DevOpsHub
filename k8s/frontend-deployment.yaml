@@ -22,7 +22,7 @@ spec:
         - name: ghcr-pull
       containers:
         - name: frontend
-          image: ghcr.io/asamuratatsuya/devopshub-frontend:sha-d87b942
+          image: ghcr.io/asamuratatsuya/devopshub-frontend:sha-2fc9326
           imagePullPolicy: Always
           ports:
             - name: http
