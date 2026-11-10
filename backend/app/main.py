@@ -35,7 +35,7 @@ async def root():
     return {
         "message": "欢迎使用 DevOpsHub API",
         "status": "运行中",
-        "version": "1.0.0",
+        "version": "1.0.1",
     }
 
 
