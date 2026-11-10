@@ -16,7 +16,8 @@ spec:
       labels:
         app: backend
     spec:
-      automountServiceAccountToken: false
+      serviceAccountName: devopshub-backend
+      automountServiceAccountToken: true
       terminationGracePeriodSeconds: 30
       imagePullSecrets:
         - name: ghcr-pull
