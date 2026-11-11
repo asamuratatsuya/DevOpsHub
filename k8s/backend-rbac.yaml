@@ -9,9 +9,9 @@ automountServiceAccountToken: true
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: devopshub-backend-readonly
+  name: devopshub-backend
 rules:
-  # 读取集群节点
+  # 节点：只读（列表、详情）
   - apiGroups: [""]
     resources:
       - nodes
@@ -20,7 +20,8 @@ rules:
       - list
       - watch
 
-  # 读取集群 Pod
+  # Pod：读 + 删除
+  # 删除 Pod 后由上层 Deployment 的 ReplicaSet 自动补新 Pod，等效"重启"
   - apiGroups: [""]
     resources:
       - pods
@@ -28,12 +29,40 @@ rules:
       - get
       - list
       - watch
+      - delete
+
+  # Pod 日志：只读
+  - apiGroups: [""]
+    resources:
+      - pods/log
+    verbs:
+      - get
+
+  # Deployment：读 + patch
+  # patch 用于给 spec.template.metadata.annotations 打
+  # kubectl.kubernetes.io/restartedAt 时间戳，触发滚动重启
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+
+  # Deployment 的 scale 子资源：读 + patch，用于调整副本数
+  - apiGroups: ["apps"]
+    resources:
+      - deployments/scale
+    verbs:
+      - get
+      - patch
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: devopshub-backend-readonly
+  name: devopshub-backend
 subjects:
   - kind: ServiceAccount
     name: devopshub-backend
@@ -41,4 +70,4 @@ subjects:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: devopshub-backend-readonly
+  name: devopshub-backend
