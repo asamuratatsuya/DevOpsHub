@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+from app.routers.deployments import router as deployments_router
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -30,6 +31,7 @@ app = FastAPI(
 
 app.include_router(project_router)
 app.include_router(cluster_router)
+app.include_router(deployments_router)
 
 @app.get("/")
 async def root():

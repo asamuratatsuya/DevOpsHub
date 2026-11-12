@@ -10,13 +10,8 @@ class KubernetesUnavailableError(RuntimeError):
 
 
 @lru_cache(maxsize=1)
-def get_core_v1_api() -> client.CoreV1Api:
-    """
-    获取 Kubernetes CoreV1 API 客户端。
-
-    优先使用集群内 ServiceAccount；
-    本地开发环境则尝试使用 kubeconfig。
-    """
+def _load_kubernetes_config() -> None:
+    """加载 Kubernetes 配置，优先使用集群内 ServiceAccount。"""
     try:
         config.load_incluster_config()
     except ConfigException:
@@ -27,7 +22,17 @@ def get_core_v1_api() -> client.CoreV1Api:
                 "Kubernetes configuration is unavailable"
             ) from exc
 
+
+@lru_cache(maxsize=1)
+def get_core_v1_api() -> client.CoreV1Api:
+    _load_kubernetes_config()
     return client.CoreV1Api()
+
+
+@lru_cache(maxsize=1)
+def get_apps_v1_api() -> client.AppsV1Api:
+    _load_kubernetes_config()
+    return client.AppsV1Api()
 
 
 def _get_node_status(node) -> str:
@@ -178,3 +183,81 @@ def get_cluster_pods() -> list[dict]:
         result,
         key=lambda item: (item["namespace"], item["name"]),
     )
+
+def _format_deployment(deployment) -> dict:
+    """整理 Deployment 信息。"""
+    spec = deployment.spec
+    status = deployment.status
+
+    return {
+        "name": deployment.metadata.name,
+        "namespace": deployment.metadata.namespace,
+        "replicas": {
+            "desired": spec.replicas or 0,
+            "current": status.replicas or 0,
+            "updated": status.updated_replicas or 0,
+            "ready": status.ready_replicas or 0,
+            "available": status.available_replicas or 0,
+        },
+        "strategy": (
+            spec.strategy.type
+            if spec.strategy
+            else None
+        ),
+        "images": [
+            container.image
+            for container in (spec.template.spec.containers or [])
+        ],
+        "selector": (
+            spec.selector.match_labels or {}
+            if spec.selector
+            else {}
+        ),
+        "generation": deployment.metadata.generation,
+        "observed_generation": status.observed_generation,
+        "conditions": [
+            {
+                "type": condition.type,
+                "status": condition.status,
+                "reason": condition.reason,
+                "message": condition.message,
+            }
+            for condition in (status.conditions or [])
+        ],
+        "created_at": (
+            deployment.metadata.creation_timestamp.isoformat()
+            if deployment.metadata.creation_timestamp
+            else None
+        ),
+    }
+
+
+def get_deployments(namespace: str | None = None) -> list[dict]:
+    """获取 Deployment 列表，可按 namespace 筛选。"""
+    api = get_apps_v1_api()
+
+    if namespace:
+        deployments = api.list_namespaced_deployment(
+            namespace=namespace
+        ).items
+    else:
+        deployments = api.list_deployment_for_all_namespaces().items
+
+    result = [_format_deployment(item) for item in deployments]
+
+    return sorted(
+        result,
+        key=lambda item: (item["namespace"], item["name"]),
+    )
+
+
+def get_deployment(namespace: str, name: str) -> dict:
+    """获取指定 Deployment 的详情。"""
+    api = get_apps_v1_api()
+
+    deployment = api.read_namespaced_deployment(
+        name=name,
+        namespace=namespace,
+    )
+
+    return _format_deployment(deployment)
