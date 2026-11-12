@@ -261,3 +261,92 @@ def get_deployment(namespace: str, name: str) -> dict:
     )
 
     return _format_deployment(deployment)
+
+def get_pod_detail(namespace: str, name: str) -> dict:
+    """获取指定 Pod 的详细信息。"""
+    api = get_core_v1_api()
+    pod = api.read_namespaced_pod(
+        name=name,
+        namespace=namespace,
+    )
+
+    container_statuses = {
+        item.name: item
+        for item in (pod.status.container_statuses or [])
+    }
+
+    containers = []
+
+    for container in (pod.spec.containers or []):
+        status = container_statuses.get(container.name)
+
+        state = "Unknown"
+        state_reason = None
+
+        if status and status.state:
+            if status.state.running:
+                state = "Running"
+            elif status.state.waiting:
+                state = "Waiting"
+                state_reason = status.state.waiting.reason
+            elif status.state.terminated:
+                state = "Terminated"
+                state_reason = status.state.terminated.reason
+
+        containers.append({
+            "name": container.name,
+            "image": container.image,
+            "ready": status.ready if status else False,
+            "restart_count": status.restart_count if status else 0,
+            "state": state,
+            "state_reason": state_reason,
+        })
+
+    return {
+        "name": pod.metadata.name,
+        "namespace": pod.metadata.namespace,
+        "status": pod.status.phase or "Unknown",
+        "pod_ip": pod.status.pod_ip,
+        "host_ip": pod.status.host_ip,
+        "node_name": pod.spec.node_name,
+        "restart_count": sum(
+            item.restart_count or 0
+            for item in container_statuses.values()
+        ),
+        "ready_containers": sum(
+            1 for item in container_statuses.values() if item.ready
+        ),
+        "total_containers": len(containers),
+        "containers": containers,
+        "owners": [
+            {
+                "kind": owner.kind,
+                "name": owner.name,
+            }
+            for owner in (pod.metadata.owner_references or [])
+        ],
+        "created_at": (
+            pod.metadata.creation_timestamp.isoformat()
+            if pod.metadata.creation_timestamp
+            else None
+        ),
+    }
+
+
+def get_pod_logs(
+    namespace: str,
+    name: str,
+    container: str | None = None,
+    tail_lines: int = 100,
+    timestamps: bool = True,
+) -> str:
+    """获取指定 Pod 的容器日志。"""
+    api = get_core_v1_api()
+
+    return api.read_namespaced_pod_log(
+        name=name,
+        namespace=namespace,
+        container=container,
+        tail_lines=tail_lines,
+        timestamps=timestamps,
+    )
