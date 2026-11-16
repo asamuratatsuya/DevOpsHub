@@ -350,3 +350,120 @@ def get_pod_logs(
         tail_lines=tail_lines,
         timestamps=timestamps,
     )
+
+
+def get_cluster_node(name: str) -> dict:
+    """获取指定 Kubernetes 节点的详细信息。"""
+    api = get_core_v1_api()
+    node = api.read_node(name=name)
+
+    node_status = node.status
+    node_info = node_status.node_info
+    spec = node.spec
+
+    addresses = node_status.addresses or []
+    capacity = node_status.capacity or {}
+    allocatable = node_status.allocatable or {}
+
+    internal_ip = next(
+        (
+            item.address
+            for item in addresses
+            if item.type == "InternalIP"
+        ),
+        None,
+    )
+
+    external_ip = next(
+        (
+            item.address
+            for item in addresses
+            if item.type == "ExternalIP"
+        ),
+        None,
+    )
+
+    def format_conditions():
+        result = []
+
+        for condition in (node_status.conditions or []):
+            result.append({
+                "type": condition.type,
+                "status": condition.status,
+                "reason": condition.reason,
+                "message": condition.message,
+                "last_heartbeat_time": (
+                    condition.last_heartbeat_time.isoformat()
+                    if condition.last_heartbeat_time else None
+                ),
+                "last_transition_time": (
+                    condition.last_transition_time.isoformat()
+                    if condition.last_transition_time else None
+                ),
+            })
+
+        return result
+
+    return {
+        "name": node.metadata.name,
+        "status": _get_node_status(node),
+        "roles": _get_node_roles(node),
+        "addresses": [
+            {
+                "type": item.type,
+                "address": item.address,
+            }
+            for item in addresses
+        ],
+        "internal_ip": internal_ip,
+        "external_ip": external_ip,
+        "kubernetes": {
+            "kubelet_version": (
+                node_info.kubelet_version if node_info else None
+            ),
+            "kube_proxy_version": (
+                node_info.kube_proxy_version if node_info else None
+            ),
+            "container_runtime_version": (
+                node_info.container_runtime_version if node_info else None
+            ),
+            "os_image": node_info.os_image if node_info else None,
+            "operating_system": (
+                node_info.operating_system if node_info else None
+            ),
+            "architecture": (
+                node_info.architecture if node_info else None
+            ),
+            "kernel_version": (
+                node_info.kernel_version if node_info else None
+            ),
+        },
+        "capacity": {
+            "cpu": capacity.get("cpu"),
+            "memory": capacity.get("memory"),
+            "pods": capacity.get("pods"),
+            "ephemeral_storage": capacity.get("ephemeral-storage"),
+        },
+        "allocatable": {
+            "cpu": allocatable.get("cpu"),
+            "memory": allocatable.get("memory"),
+            "pods": allocatable.get("pods"),
+            "ephemeral_storage": allocatable.get("ephemeral-storage"),
+        },
+        "unschedulable": spec.unschedulable or False,
+        "taints": [
+            {
+                "key": item.key,
+                "value": item.value,
+                "effect": item.effect,
+            }
+            for item in (spec.taints or [])
+        ],
+        "conditions": format_conditions(),
+        "created_at": (
+            node.metadata.creation_timestamp.isoformat()
+            if node.metadata.creation_timestamp
+            else None
+        ),
+    }
+
