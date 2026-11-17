@@ -3,6 +3,7 @@ from functools import lru_cache
 
 from kubernetes import client, config
 from kubernetes.config.config_exception import ConfigException
+from datetime import datetime, timezone
 
 
 class KubernetesUnavailableError(RuntimeError):
@@ -261,6 +262,62 @@ def get_deployment(namespace: str, name: str) -> dict:
     )
 
     return _format_deployment(deployment)
+
+ 
+def scale_deployment(
+    namespace: str,
+    name: str,
+    replicas: int,
+) -> dict:
+    """调整 Deployment 副本数。"""
+    api = get_apps_v1_api()
+
+    deployment = api.patch_namespaced_deployment_scale(
+        name=name,
+        namespace=namespace,
+        body={
+            "spec": {
+                "replicas": replicas,
+            }
+        },
+    )
+
+    return {
+        "name": deployment.metadata.name,
+        "namespace": deployment.metadata.namespace,
+        "replicas": deployment.spec.replicas,
+    }
+
+
+def restart_deployment(namespace: str, name: str) -> dict:
+    """触发 Deployment 滚动重启。"""
+    api = get_apps_v1_api()
+
+    restarted_at = datetime.now(timezone.utc).isoformat()
+
+    deployment = api.patch_namespaced_deployment(
+        name=name,
+        namespace=namespace,
+        body={
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "kubectl.kubernetes.io/restartedAt": restarted_at,
+                        }
+                    }
+                }
+            }
+        },
+    )
+
+    return {
+        "name": deployment.metadata.name,
+        "namespace": deployment.metadata.namespace,
+        "restarted_at": restarted_at,
+        "message": "Deployment restart triggered",
+    }
+
 
 def get_pod_detail(namespace: str, name: str) -> dict:
     """获取指定 Pod 的详细信息。"""

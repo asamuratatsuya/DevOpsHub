@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 from kubernetes.client.exceptions import ApiException
 
 from app.services.kubernetes import (
     KubernetesUnavailableError,
     get_deployment,
     get_deployments,
+    scale_deployment,
+    restart_deployment,
 )
 
 
@@ -12,6 +15,10 @@ router = APIRouter(
     prefix="/api/v1/deployments",
     tags=["Kubernetes Deployments"],
 )
+
+
+class ScaleRequest(BaseModel):
+    replicas: int = Field(ge=0, le=10)
 
 
 def handle_kubernetes_error(exc: Exception):
@@ -60,5 +67,32 @@ def deployment_list(
 def deployment_detail(namespace: str, deployment_name: str):
     try:
         return get_deployment(namespace, deployment_name)
+    except (KubernetesUnavailableError, ApiException) as exc:
+        handle_kubernetes_error(exc)
+
+
+
+# Deployment 副本数调整
+@router.patch("/{namespace}/{deployment_name}/scale")
+def deployment_scale(
+    namespace: str,
+    deployment_name: str,
+    request: ScaleRequest,
+):
+    try:
+        return scale_deployment(
+            namespace,
+            deployment_name,
+            request.replicas,
+        )
+    except (KubernetesUnavailableError, ApiException) as exc:
+        handle_kubernetes_error(exc)
+
+
+# Deployment 滚动重启
+@router.post("/{namespace}/{deployment_name}/restart")
+def deployment_restart(namespace: str, deployment_name: str):
+    try:
+        return restart_deployment(namespace, deployment_name)
     except (KubernetesUnavailableError, ApiException) as exc:
         handle_kubernetes_error(exc)
