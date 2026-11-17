@@ -1,126 +1,116 @@
 <script setup lang="ts">
-defineOptions({
-  name: "Welcome"
+import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
+import {
+  getClusterOverview,
+  getClusterNodes,
+  type ClusterOverview,
+  type ClusterNode
+} from "@/api/cluster";
+import { getProjectList } from "@/api/project";
+
+defineOptions({ name: "Welcome" });
+
+const loading = ref(false);
+const projectCount = ref(0);
+
+const overview = ref<ClusterOverview>({
+  nodes: { total: 0, ready: 0, not_ready: 0 },
+  pods: {
+    total: 0,
+    running: 0,
+    pending: 0,
+    failed: 0,
+    succeeded: 0,
+    unknown: 0
+  }
 });
 
-// 首页统计数据：当前使用模拟数据，后续接入 FastAPI
-const statistics = [
-  {
-    title: "项目总数",
-    value: 8,
-    unit: "个",
-    description: "已接入管理的项目",
-    color: "blue",
-    symbol: "P"
-  },
-  {
-    title: "成功流水线",
-    value: 36,
-    unit: "次",
-    description: "累计成功构建次数",
-    color: "green",
-    symbol: "C"
-  },
-  {
-    title: "运行中应用",
-    value: 12,
-    unit: "个",
-    description: "Kubernetes 应用实例",
-    color: "purple",
-    symbol: "A"
-  },
-  {
-    title: "异常告警",
-    value: 2,
-    unit: "条",
-    description: "待处理的异常信息",
-    color: "orange",
-    symbol: "!"
-  }
-];
+const nodes = ref<ClusterNode[]>([]);
 
-// 模拟集群资源数据
-const clusterResources = [
-  {
-    name: "CPU 使用率",
-    value: 42,
-    color: "blue"
-  },
-  {
-    name: "内存使用率",
-    value: 61,
-    color: "green"
-  },
-  {
-    name: "磁盘使用率",
-    value: 35,
-    color: "purple"
-  }
-];
+const router = useRouter();
 
-// 模拟集群节点
-const nodes = [
-  { name: "master", role: "Control Plane", status: "Ready" },
-  { name: "node1", role: "Worker", status: "Ready" },
-  { name: "node2", role: "Worker", status: "Ready" }
-];
-
-// 模拟部署记录
-const recentDeployments = [
-  {
-    name: "demo-app",
-    version: "v1.2.0",
-    environment: "Production",
-    time: "2026-11-02 09:30",
-    status: "成功"
-  },
-  {
-    name: "podinfo",
-    version: "v6.16.0",
-    environment: "Development",
-    time: "2026-11-02 08:45",
-    status: "成功"
-  },
-  {
-    name: "backend",
-    version: "v1.0.0",
-    environment: "Development",
-    time: "2026-11-01 16:20",
-    status: "失败"
-  }
-];
-
-// 快捷入口
 const quickActions = [
   {
     title: "项目管理",
-    description: "管理 GitHub 项目",
+    description: "管理已接入的 GitHub 项目",
     symbol: "P",
-    path: "/project"
+    path: "/project/index"
   },
   {
-    title: "CI/CD 流水线",
-    description: "查看自动构建任务",
-    symbol: "C",
-    path: "/pipeline"
-  },
-  {
-    title: "应用部署",
-    description: "管理 Kubernetes 应用",
-    symbol: "D",
-    path: "/deployment"
-  },
-  {
-    title: "集群监控",
-    description: "查看集群运行指标",
-    symbol: "M",
-    path: "/monitoring"
+    title: "集群概览",
+    description: "查看 Kubernetes 节点与 Pod 状态",
+    symbol: "K",
+    path: "/cluster/index"
   }
 ];
+
+function navigateTo(path: string) {
+  router.push(path);
+}
+
+const statistics = [
+  {
+    title: "项目总数",
+    unit: "个",
+    description: "已接入管理的项目",
+    color: "blue",
+    symbol: "P",
+    value: () => projectCount.value
+  },
+  {
+    title: "Kubernetes 节点",
+    unit: "个",
+    description: "集群节点总数",
+    color: "green",
+    symbol: "N",
+    value: () => overview.value.nodes.total
+  },
+  {
+    title: "Pod 总数",
+    unit: "个",
+    description: "集群中的 Pod 实例",
+    color: "purple",
+    symbol: "P",
+    value: () => overview.value.pods.total
+  },
+  {
+    title: "运行中 Pod",
+    unit: "个",
+    description: "当前 Running 状态",
+    color: "orange",
+    symbol: "R",
+    value: () => overview.value.pods.running
+  }
+];
+
+async function loadData() {
+  loading.value = true;
+
+  try {
+    const [projects, overviewData, nodeData] = await Promise.all([
+      getProjectList(),
+      getClusterOverview(),
+      getClusterNodes()
+    ]);
+
+    projectCount.value = projects.length;
+    overview.value = overviewData;
+    nodes.value = nodeData;
+  } catch (error) {
+    console.error("首页数据加载失败：", error);
+    ElMessage.error("首页数据加载失败，请检查后端服务");
+  } finally {
+    loading.value = false;
+  }
+}
+
+onMounted(loadData);
 </script>
 
 <template>
-  <div class="devops-dashboard">
+  <div v-loading="loading" class="devops-dashboard">
     <!-- 欢迎区域 -->
     <section class="welcome-header">
       <div>
@@ -131,7 +121,7 @@ const quickActions = [
 
       <div class="cluster-status">
         <span class="status-dot" />
-        <span>平台运行正常</span>
+        <span>集群数据概览</span>
       </div>
     </section>
 
@@ -146,7 +136,7 @@ const quickActions = [
         </div>
 
         <div class="stat-number">
-          {{ item.value }}
+          {{ item.value() }}
           <span>{{ item.unit }}</span>
         </div>
 
@@ -163,7 +153,6 @@ const quickActions = [
           <h2>集群资源概览</h2>
           <p>Kubernetes Cluster Overview</p>
         </div>
-        <span class="demo-label">模拟数据</span>
       </div>
 
       <div class="cluster-grid">
@@ -174,18 +163,27 @@ const quickActions = [
           <div v-for="node in nodes" :key="node.name" class="node-item">
             <div class="node-info">
               <div class="node-name">{{ node.name }}</div>
-              <div class="node-role">{{ node.role }}</div>
+              <div class="node-role">
+                {{ node.roles.join(" / ") || "Worker" }} ·
+                {{ node.internal_ip }}
+              </div>
             </div>
 
             <div class="node-ready">
-              <span class="status-dot" />
+              <span
+                class="status-dot"
+                :class="{ 'not-ready-dot': node.status !== 'Ready' }"
+              />
               {{ node.status }}
             </div>
           </div>
 
           <div class="node-summary">
             <span>节点总数</span>
-            <strong>3 / 3 Ready</strong>
+            <strong
+              >{{ overview.nodes.ready }} /
+              {{ overview.nodes.total }} Ready</strong
+            >
           </div>
         </div>
 
@@ -193,27 +191,12 @@ const quickActions = [
         <div class="panel resource-panel">
           <h3>资源使用情况</h3>
 
-          <div
-            v-for="resource in clusterResources"
-            :key="resource.name"
-            class="resource-item"
-          >
-            <div class="resource-heading">
-              <span>{{ resource.name }}</span>
-              <strong>{{ resource.value }}%</strong>
-            </div>
-
-            <div class="progress-track">
-              <div
-                class="progress-value"
-                :class="resource.color"
-                :style="{ width: `${resource.value}%` }"
-              />
-            </div>
+          <div class="resource-placeholder">
+            暂未接入 Prometheus，资源使用率数据暂不可用。
           </div>
 
           <div class="resource-note">
-            CPU、内存和磁盘数据将在后续接入 Prometheus。
+            接入 Prometheus 后将在此展示 CPU、内存和磁盘监控数据。
           </div>
         </div>
       </div>
@@ -226,7 +209,6 @@ const quickActions = [
           <h2>最近部署记录</h2>
           <p>Recent Deployment Activities</p>
         </div>
-        <span class="demo-label">模拟数据</span>
       </div>
 
       <div class="panel deployment-panel">
@@ -243,18 +225,9 @@ const quickActions = [
             </thead>
 
             <tbody>
-              <tr v-for="item in recentDeployments" :key="item.name">
-                <td class="app-name">{{ item.name }}</td>
-                <td>{{ item.version }}</td>
-                <td>{{ item.environment }}</td>
-                <td>{{ item.time }}</td>
-                <td>
-                  <span
-                    class="deployment-status"
-                    :class="item.status === '成功' ? 'success' : 'failed'"
-                  >
-                    {{ item.status }}
-                  </span>
+              <tr>
+                <td colspan="5" class="empty-cell">
+                  暂无部署记录，等待接入部署历史 API
                 </td>
               </tr>
             </tbody>
@@ -277,6 +250,11 @@ const quickActions = [
           v-for="action in quickActions"
           :key="action.title"
           class="quick-card"
+          role="button"
+          tabindex="0"
+          @click="navigateTo(action.path)"
+          @keydown.enter="navigateTo(action.path)"
+          @keydown.space.prevent="navigateTo(action.path)"
         >
           <div class="quick-symbol">{{ action.symbol }}</div>
           <div>
@@ -699,5 +677,28 @@ const quickActions = [
   .welcome-header h1 {
     font-size: 22px;
   }
+}
+
+.resource-placeholder {
+  display: flex;
+  min-height: 150px;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #a0aab8;
+  font-size: 13px;
+  text-align: center;
+  background: #fafbfd;
+  border-radius: 8px;
+}
+
+.empty-cell {
+  padding: 30px 12px !important;
+  color: #a0aab8 !important;
+  text-align: center;
+}
+
+.not-ready-dot {
+  background: #f56c6c;
 }
 </style>
