@@ -30,6 +30,11 @@ spec:
               containerPort: 8000
               protocol: TCP
           env:
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: devopshub-github
+                  key: GITHUB_TOKEN
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:

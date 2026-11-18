@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 
-
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,6 +13,8 @@ from app.routers.project import router as project_router
 from app.routers.cluster import router as cluster_router
 from app.routers.pods import router as pods_router
 from app.routers.deployments import router as deployments_router
+from app.routers.pipelines import router as pipelines_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -34,6 +35,7 @@ app.include_router(project_router)
 app.include_router(cluster_router)
 app.include_router(deployments_router)
 app.include_router(pods_router)
+app.include_router(pipelines_router)
 
 
 @app.get("/")

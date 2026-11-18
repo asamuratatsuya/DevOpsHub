@@ -294,7 +294,7 @@ function closeDialog() {
     </div>
 
     <!-- 项目列表 -->
-    <div class="project-panel">
+    <div v-loading="loading" class="project-panel">
       <div class="panel-header">
         <div>
           <h3>项目列表</h3>
@@ -311,7 +311,6 @@ function closeDialog() {
 
       <el-table
         v-if="filteredProjects.length > 0"
-        v-loading="loading"
         :data="filteredProjects"
         style="width: 100%"
       >
@@ -383,7 +382,7 @@ function closeDialog() {
     <!-- 添加 / 编辑项目弹窗 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="editingId ? '编辑项目' : '添加项目'"
+      :title="editingId !== null ? '编辑项目' : '添加项目'"
       width="520px"
       @closed="closeDialog"
     >
@@ -426,7 +425,14 @@ function closeDialog() {
       <template #footer>
         <el-button @click="closeDialog"> 取消 </el-button>
 
-        <el-button type="primary" @click="handleSave"> 保存项目 </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          :disabled="saving"
+          @click="handleSave"
+        >
+          保存项目
+        </el-button>
       </template>
     </el-dialog>
   </div>
