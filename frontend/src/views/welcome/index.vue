@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, nextTick, ref } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -9,6 +9,13 @@ import {
   type ClusterNode
 } from "@/api/cluster";
 import { getProjectList } from "@/api/project";
+
+import * as echarts from "echarts";
+import {
+  getMonitoringOverview,
+  type MonitoringOverview,
+  type MonitoringRange
+} from "@/api/monitoring";
 
 defineOptions({ name: "Welcome" });
 
@@ -28,6 +35,130 @@ const overview = ref<ClusterOverview>({
 });
 
 const nodes = ref<ClusterNode[]>([]);
+
+// Prometheus 监控数据
+const monitoringRange = ref<MonitoringRange>("1h");
+const monitoringLoading = ref(false);
+const monitoringData = ref<MonitoringOverview | null>(null);
+
+const resourceChartRef = ref<HTMLDivElement | null>(null);
+let resourceChart: echarts.ECharts | null = null;
+
+const rangeOptions: { label: string; value: MonitoringRange }[] = [
+  { label: "15分钟", value: "15m" },
+  { label: "1小时", value: "1h" },
+  { label: "6小时", value: "6h" },
+  { label: "24小时", value: "24h" }
+];
+
+// 初始化并更新资源趋势图
+function renderResourceChart() {
+  if (!resourceChartRef.value) return;
+
+  if (!resourceChart) {
+    resourceChart = echarts.init(resourceChartRef.value);
+  }
+
+  const cpuPoints = monitoringData.value?.cpu.points ?? [];
+  const memoryPoints = monitoringData.value?.memory.points ?? [];
+
+  resourceChart.setOption(
+    {
+      tooltip: {
+        trigger: "axis",
+        valueFormatter: (value: number) => `${value.toFixed(2)}%`
+      },
+      legend: {
+        data: ["CPU", "内存"],
+        top: 0,
+        right: 0,
+        textStyle: { color: "#8492a6", fontSize: 12 }
+      },
+      grid: {
+        left: 42,
+        right: 16,
+        top: 42,
+        bottom: 28
+      },
+      xAxis: {
+        type: "time",
+        boundaryGap: false,
+        axisLine: { lineStyle: { color: "#ebeef5" } },
+        axisLabel: {
+          color: "#a0aab8",
+          fontSize: 10,
+          formatter: (value: number) =>
+            new Date(value).toLocaleTimeString("zh-CN", {
+              hour: "2-digit",
+              minute: "2-digit"
+            })
+        }
+      },
+      yAxis: {
+        type: "value",
+        min: 0,
+        max: 100,
+        axisLabel: {
+          color: "#a0aab8",
+          formatter: "{value}%"
+        },
+        splitLine: {
+          lineStyle: { color: "#f0f2f5" }
+        }
+      },
+      series: [
+        {
+          name: "CPU",
+          type: "line",
+          smooth: true,
+          showSymbol: false,
+          lineStyle: { width: 2 },
+          itemStyle: { color: "#409eff" },
+          data: cpuPoints.map(item => [item.timestamp * 1000, item.value])
+        },
+        {
+          name: "内存",
+          type: "line",
+          smooth: true,
+          showSymbol: false,
+          lineStyle: { width: 2 },
+          itemStyle: { color: "#35b56a" },
+          data: memoryPoints.map(item => [item.timestamp * 1000, item.value])
+        }
+      ]
+    },
+    true
+  );
+}
+
+// 获取 Prometheus 数据
+async function loadMonitoring(range: MonitoringRange = monitoringRange.value) {
+  monitoringLoading.value = true;
+
+  try {
+    monitoringData.value = await getMonitoringOverview(range);
+    await nextTick();
+    renderResourceChart();
+  } catch (error) {
+    console.error("Prometheus 监控数据加载失败：", error);
+    ElMessage.error("监控数据加载失败");
+  } finally {
+    monitoringLoading.value = false;
+  }
+}
+
+// 切换监控时间范围
+function changeMonitoringRange(range: MonitoringRange) {
+  if (range === monitoringRange.value) return;
+
+  monitoringRange.value = range;
+  loadMonitoring(range);
+}
+
+// 调整窗口大小时重新适配图表
+function resizeResourceChart() {
+  resourceChart?.resize();
+}
 
 const router = useRouter();
 
@@ -106,7 +237,17 @@ async function loadData() {
   }
 }
 
-onMounted(loadData);
+onMounted(() => {
+  loadData();
+  loadMonitoring();
+  window.addEventListener("resize", resizeResourceChart);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", resizeResourceChart);
+  resourceChart?.dispose();
+  resourceChart = null;
+});
 </script>
 
 <template>
@@ -189,15 +330,53 @@ onMounted(loadData);
 
         <!-- 资源使用率 -->
         <div class="panel resource-panel">
-          <h3>资源使用情况</h3>
+          <div class="resource-header">
+            <h3>资源使用情况</h3>
 
-          <div class="resource-placeholder">
-            暂未接入 Prometheus，资源使用率数据暂不可用。
+            <div class="range-options">
+              <button
+                v-for="option in rangeOptions"
+                :key="option.value"
+                type="button"
+                :class="{ active: monitoringRange === option.value }"
+                @click="changeMonitoringRange(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            </div>
           </div>
 
-          <div class="resource-note">
-            接入 Prometheus 后将在此展示 CPU、内存和磁盘监控数据。
+          <div class="resource-current">
+            <div>
+              <span class="metric-label">CPU 使用率</span>
+              <strong class="cpu-value">
+                {{
+                  monitoringData?.cpu.current != null
+                    ? `${monitoringData.cpu.current.toFixed(2)}%`
+                    : "--"
+                }}
+              </strong>
+            </div>
+
+            <div>
+              <span class="metric-label">内存使用率</span>
+              <strong class="memory-value">
+                {{
+                  monitoringData?.memory.current != null
+                    ? `${monitoringData.memory.current.toFixed(2)}%`
+                    : "--"
+                }}
+              </strong>
+            </div>
           </div>
+
+          <div
+            ref="resourceChartRef"
+            v-loading="monitoringLoading"
+            class="resource-chart"
+          />
+
+          <div class="resource-note">数据来源：Prometheus · 集群实时监控</div>
         </div>
       </div>
     </section>
@@ -700,5 +879,82 @@ onMounted(loadData);
 
 .not-ready-dot {
   background: #f56c6c;
+}
+.resource-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.resource-header h3 {
+  margin: 0;
+}
+
+.range-options {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: #f5f7fa;
+  border-radius: 6px;
+}
+
+.range-options button {
+  padding: 5px 9px;
+  font-size: 11px;
+  color: #8492a6;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+}
+
+.range-options button.active {
+  color: #409eff;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 8%);
+}
+
+.resource-current {
+  display: flex;
+  gap: 40px;
+  margin-bottom: 12px;
+}
+
+.resource-current > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.metric-label {
+  font-size: 12px;
+  color: #8492a6;
+}
+
+.cpu-value,
+.memory-value {
+  font-size: 22px;
+}
+
+.cpu-value {
+  color: #409eff;
+}
+
+.memory-value {
+  color: #35a76b;
+}
+
+.resource-chart {
+  width: 100%;
+  height: 185px;
+}
+
+.resource-note {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #a0aab8;
 }
 </style>
