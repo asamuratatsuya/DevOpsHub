@@ -344,6 +344,15 @@ onBeforeUnmount(() => {
                 {{ option.label }}
               </button>
             </div>
+
+            <a
+              class="prometheus-link"
+              href="http://192.168.128.24:30090/graph"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              打开 Prometheus ↗
+            </a>
           </div>
 
           <div class="resource-current">
@@ -887,6 +896,27 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 16px;
+}
+.prometheus-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #409eff;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #edf5ff;
+  border: 1px solid #d9ecff;
+  border-radius: 5px;
+  transition: all 0.2s;
+}
+
+.prometheus-link:hover {
+  color: #fff;
+  background: #409eff;
+  border-color: #409eff;
 }
 
 .resource-header h3 {
