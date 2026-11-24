@@ -1,0 +1,65 @@
+# 关闭暂时不需要的组件
+alertmanager:
+  enabled: false
+
+prometheus-pushgateway:
+  enabled: false
+
+# kube-state-metrics：采集 Kubernetes 对象状态
+kube-state-metrics:
+  enabled: true
+  image:
+    tag: "v2.11.0"
+
+  nodeSelector:
+    kubernetes.io/hostname: node2
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Node Exporter：采集三个节点的主机指标
+prometheus-node-exporter:
+  enabled: true
+  image:
+    tag: "v1.12.1"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+  # 允许在带有 NoSchedule 污点的 master 上运行
+  tolerations:
+    - operator: Exists
+      effect: NoSchedule
+
+# Prometheus 主服务
+server:
+  nodeSelector:
+    kubernetes.io/hostname: node2
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # 数据持久化
+  persistentVolume:
+    enabled: true
+    storageClass: local-path
+    size: 5Gi
+
+  # 数据保留策略
+  retention: "7d"
+  retentionSize: "4GB"
