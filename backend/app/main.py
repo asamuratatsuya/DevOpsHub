@@ -15,6 +15,8 @@ from app.routers.pods import router as pods_router
 from app.routers.deployments import router as deployments_router
 from app.routers.pipelines import router as pipelines_router
 
+from app.routers.monitoring import router as monitoring_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,7 +38,7 @@ app.include_router(cluster_router)
 app.include_router(deployments_router)
 app.include_router(pods_router)
 app.include_router(pipelines_router)
-
+app.include_router(monitoring_router)
 
 @app.get("/")
 async def root():
