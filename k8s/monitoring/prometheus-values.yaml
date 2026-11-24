@@ -43,6 +43,11 @@ prometheus-node-exporter:
 
 # Prometheus 主服务
 server:
+  service:
+    type: NodePort
+    servicePort: 80
+    nodePort: 30090
+
   nodeSelector:
     kubernetes.io/hostname: node2
 
