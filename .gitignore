@@ -35,3 +35,15 @@ frontend/.vite/
 /.env
 frontend/.env.local
 frontend/.env.*.local
+
+# Thesis docs & local working artifacts (personal info / drafts, not for public repo)
+/毕设文档/
+/txt/
+/项目任务大纲.md
+/技术清单.md
+/文件结构.md
+/文件结构.md.bak
+/DevOpsHub-pipeline-implementation.zip
+/DevOpsHub_架构关系图.png
+/.qoder-input-files/
+/.qoder-input-images/
